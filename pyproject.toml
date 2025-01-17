@@ -3,10 +3,12 @@ requires = ["setuptools>=40.8.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
+# Do not add spaces around the '=' sign for any of the fields
+# preceeded by a marker comment as it affects the publish workflow.
 #replace_package_name_marker
 name = "dspy"
 #replace_package_version_marker
-version = "2.5.30"
+version = "2.6.0rc8"
 description = "DSPy"
 readme = "README.md"
 authors = [{ name = "Omar Khattab", email = "okhattab@stanford.edu" }]
@@ -25,7 +27,7 @@ classifiers = [
 # project dependencies function similarly to requirements.txt,
 # `pip install .` will pull from pyproject.toml dependencies
 dependencies = [
-    "backoff~=2.2",
+    "backoff",
     "joblib~=1.3",
     "openai",
     "pandas",
@@ -38,12 +40,14 @@ dependencies = [
     "pydantic~=2.0",
     "jinja2",
     "magicattr~=0.1.6",
-    "litellm",
+    "litellm==1.57.4",
     "diskcache",
     "json-repair",
     "tenacity>=8.2.3",
     "anyio",
     "asyncer==0.0.8",
+    "cachetools",
+    "cloudpickle",
 ]
 
 [project.optional-dependencies]
@@ -128,16 +132,15 @@ rich = "^13.7.1"
 psycopg2 = { version = "^2.9.9", optional = true }
 pgvector = { version = "^0.2.5", optional = true }
 llama-index = { version = "^0.10.30", optional = true }
-snowflake-snowpark-python = { version = "*", optional = true, python = ">=3.9,<3.12" }
 jinja2 = "^3.1.3"
 magicattr = "^0.1.6"
-litellm = "^1.51.0"
+litellm = { version = "==1.57.4", extras = ["proxy"] }
 diskcache = "^5.6.0"
-redis = "^5.1.1"
-falkordb = "^1.0.9"
 json-repair = "^0.30.0"
 tenacity = ">=8.2.3"
 asyncer = "0.0.8"
+cachetools = "^5.5.0"
+cloudpickle = "^3.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.3"
@@ -228,6 +231,7 @@ target-version = "py39"
 select = [
     "F", # Pyflakes
     "E", # Pycodestyle
+    "TID252", # Absolute imports
 
 ]
 ignore = [

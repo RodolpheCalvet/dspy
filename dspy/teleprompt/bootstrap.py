@@ -13,7 +13,7 @@ from .vanilla import LabeledFewShot
 # TODO: metrics should return an object with __bool__ basically, but fine if they're more complex.
 # They can also be sortable.
 
-# TODO: Switch here from dsp.Example to dspy.Example. Right now, it's okay because it's internal only (predictors).
+# TODO: Switch here from dspy.dsp.Example to dspy.Example. Right now, it's okay because it's internal only (predictors).
 # NOTE: Notice the places where we don't shuffle examples. I do like that this one doesn't shuffle.
 # Other ones that consider options may want to use both unshuffled and then shuffle a few times, when
 # considering candidates.
@@ -48,23 +48,22 @@ class BootstrapFewShot(Teleprompter):
         A Teleprompter class that composes a set of demos/examples to go into a predictor's prompt.
         These demos come from a combination of labeled examples in the training set, and bootstrapped demos.
 
-        Parameters
-        ----------
-        metric: Callable
-            A function that compares an expected value and predicted value, outputting the result of that comparison. 
-        metric_threshold: optional float, default `None`
-            If the metric yields a numerical value, then check it against this threshold when
-            deciding whether or not to accept a bootstrap example.
-        teacher_settings: dict, optional
-            Settings for the `teacher` model.
-        max_bootstrapped_demos: int, default 4
-            Maximum number of bootstrapped demonstrations to include
-        max_labeled_demos: int, default 16
-            Maximum number of labeled demonstrations to include.
-        max_rounds: int, default 1
-            Number of iterations to attempt generating the required bootstrap examples. If unsuccessful after `max_rounds`, the program ends.
-        max_errors: int, default 5
-            Maximum number of errors until program ends.
+        Args:
+            metric: Callable
+                A function that compares an expected value and predicted value, outputting the result of that comparison. 
+            metric_threshold: optional float, default `None`
+                If the metric yields a numerical value, then check it against this threshold when
+                deciding whether or not to accept a bootstrap example.
+            teacher_settings: dict, optional
+                Settings for the `teacher` model.
+            max_bootstrapped_demos: int, default 4
+                Maximum number of bootstrapped demonstrations to include
+            max_labeled_demos: int, default 16
+                Maximum number of labeled demonstrations to include.
+            max_rounds: int, default 1
+                Number of iterations to attempt generating the required bootstrap examples. If unsuccessful after `max_rounds`, the program ends.
+            max_errors: int, default 5
+                Maximum number of errors until program ends.
         """
         self.metric = metric
         self.metric_threshold = metric_threshold
@@ -260,10 +259,6 @@ class BootstrapFewShot(Teleprompter):
             sample_size = max(0, sample_size)
 
             raw_demos = rng.sample(raw_demos, sample_size)
-
-            if dspy.settings.release >= 20230928:
-                predictor.demos = raw_demos + augmented_demos
-            else:
-                predictor.demos = augmented_demos + raw_demos
+            predictor.demos = augmented_demos + raw_demos
 
         return self.student

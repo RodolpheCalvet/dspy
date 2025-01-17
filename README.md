@@ -8,14 +8,14 @@
 
 **Documentation:** [DSPy Docs](https://dspy.ai/)
 
-[![Downloads](https://static.pepy.tech/badge/dspy-ai)](https://pepy.tech/project/dspy-ai)  [![Downloads](https://static.pepy.tech/badge/dspy-ai/month)](https://pepy.tech/project/dspy-ai)
+[![Downloads](https://static.pepy.tech/badge/dspy-ai)](https://pepy.tech/project/dspy-ai)  [![Downloads](https://static.pepy.tech/badge/dspy/month)](https://pepy.tech/project/dspy)
 
 
 ----
 
-DSPy is the open-source framework for _programming—rather than prompting—language models_. It allows you to iterate fast on **building modular AI systems** and provides algorithms for **optimizing their prompts and weights**, whether you're building simple classifiers, sophisticated RAG pipelines, or Agent loops.
+DSPy is the framework for _programming—rather than prompting—language models_. It allows you to iterate fast on **building modular AI systems** and offers algorithms for **optimizing their prompts and weights**, whether you're building simple classifiers, sophisticated RAG pipelines, or Agent loops.
 
-DSPy stands for Declarative Self-improving Python. Instead of brittle prompts, you write compositional _Python code_ and use DSPy's tools to **teach your LM to deliver high-quality outputs**. This [lecture](https://www.youtube.com/watch?v=JEMYuzrKLUw) is a good conceptual introduction. Meet the community, seek help, or start contributing via our GitHub repo here and our [Discord server](https://discord.gg/XCGy2WDCQB).
+DSPy stands for Declarative Self-improving Python. Instead of brittle prompts, you write compositional _Python code_ and use DSPy to **teach your LM to deliver high-quality outputs**. Learn more via our [official documentation site](https://dspy.ai/) or meet the community, seek help, or start contributing via this GitHub repo and our [Discord server](https://discord.gg/XCGy2WDCQB).
 
 
 ## Documentation: [dspy.ai](https://dspy.ai)
@@ -41,6 +41,10 @@ pip install git+https://github.com/stanfordnlp/dspy.git
 
 
 ## 📜 Citation & Reading More
+
+If you're looking to understand the framework, please go to the [DSPy Docs at dspy.ai](https://dspy.ai).
+
+If you're looking to understand the underlying research, this is a set of our papers:
 
 **[Jun'24] [Optimizing Instructions and Demonstrations for Multi-Stage Language Model Programs](https://arxiv.org/abs/2406.11695)**       
 **[Oct'23] [DSPy: Compiling Declarative Language Model Calls into Self-Improving Pipelines](https://arxiv.org/abs/2310.03714)**     

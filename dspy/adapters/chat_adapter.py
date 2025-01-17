@@ -6,15 +6,14 @@ import re
 import textwrap
 from collections.abc import Mapping
 from itertools import chain
-from typing import Any, Dict, List, Literal, NamedTuple, Union, get_args, get_origin
+from typing import Any, Dict, List, Literal, NamedTuple, Union
 
 import pydantic
 from pydantic import TypeAdapter
 from pydantic.fields import FieldInfo
 
-from dsp.adapters.base_template import Field
 from dspy.adapters.base import Adapter
-from dspy.adapters.utils import find_enum_member, format_field_value
+from dspy.adapters.utils import find_enum_member, format_field_value, get_annotation_name
 from dspy.signatures.field import OutputField
 from dspy.signatures.signature import Signature, SignatureMeta
 from dspy.signatures.utils import get_dspy_field_type
@@ -59,7 +58,7 @@ class ChatAdapter(Adapter):
         messages.append(format_turn(signature, inputs, role="user"))
         return messages
 
-    def parse(self, signature, completion, _parse_values=True):
+    def parse(self, signature, completion):
         sections = [(None, [])]
 
         for line in completion.splitlines():
@@ -75,7 +74,7 @@ class ChatAdapter(Adapter):
         for k, v in sections:
             if (k not in fields) and (k in signature.output_fields):
                 try:
-                    fields[k] = parse_value(v, signature.output_fields[k].annotation) if _parse_values else v
+                    fields[k] = parse_value(v, signature.output_fields[k].annotation)
                 except Exception as e:
                     raise ValueError(
                         f"Error parsing field {k}: {e}.\n\n\t\tOn attempting to parse the value\n```\n{v}\n```"
@@ -268,20 +267,7 @@ def format_turn(signature, values, role, incomplete=False):
     return {"role": role, "content": collapsed_messages}
 
 
-def get_annotation_name(annotation):
-    origin = get_origin(annotation)
-    args = get_args(annotation)
-    if origin is None:
-        if hasattr(annotation, "__name__"):
-            return annotation.__name__
-        else:
-            return str(annotation)
-    else:
-        args_str = ", ".join(get_annotation_name(arg) for arg in args)
-        return f"{get_annotation_name(origin)}[{args_str}]"
-
-
-def enumerate_fields(fields: dict[str, Field]) -> str:
+def enumerate_fields(fields: dict) -> str:
     parts = []
     for idx, (k, v) in enumerate(fields.items()):
         parts.append(f"{idx+1}. `{k}`")
@@ -324,7 +310,11 @@ def prepare_instructions(signature: SignatureMeta):
         elif inspect.isclass(field_type) and issubclass(field_type, enum.Enum):
             desc = f"must be one of: {'; '.join(field_type.__members__)}"
         elif hasattr(field_type, "__origin__") and field_type.__origin__ is Literal:
-            desc = f"must be one of: {'; '.join([str(x) for x in field_type.__args__])}"
+            desc = (
+                # Strongly encourage the LM to avoid choosing values that don't appear in the
+                # literal or returning a value of the form 'Literal[<selected_value>]'
+                f"must exactly match (no extra characters) one of: {'; '.join([str(x) for x in field_type.__args__])}"
+            )
         else:
             desc = "must be pareseable according to the following JSON schema: "
             desc += json.dumps(prepare_schema(field_type), ensure_ascii=False)

@@ -2,21 +2,24 @@ import ast
 import enum
 import inspect
 import json
+import logging
 import textwrap
-from typing import Any, Dict, KeysView, Literal, NamedTuple, get_args, get_origin
+from copy import deepcopy
+from typing import Any, Dict, KeysView, Literal, NamedTuple
 
 import json_repair
 import litellm
 import pydantic
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, create_model
 from pydantic.fields import FieldInfo
 
 from dspy.adapters.base import Adapter
-from dspy.adapters.utils import find_enum_member, format_field_value, serialize_for_json
+from dspy.adapters.image_utils import Image
+from dspy.adapters.utils import find_enum_member, format_field_value, get_annotation_name, serialize_for_json
+from dspy.signatures.signature import SignatureMeta
+from dspy.signatures.utils import get_dspy_field_type
 
-from ..adapters.image_utils import Image
-from ..signatures.signature import SignatureMeta
-from ..signatures.utils import get_dspy_field_type
+logger = logging.getLogger(__name__)
 
 
 class FieldInfoWithName(NamedTuple):
@@ -28,14 +31,24 @@ class JSONAdapter(Adapter):
     def __init__(self):
         pass
 
-    def __call__(self, lm, lm_kwargs, signature, demos, inputs, _parse_values=True):
+    def __call__(self, lm, lm_kwargs, signature, demos, inputs):
         inputs = self.format(signature, demos, inputs)
         inputs = dict(prompt=inputs) if isinstance(inputs, str) else dict(messages=inputs)
 
         try:
             provider = lm.model.split("/", 1)[0] or "openai"
-            if "response_format" in litellm.get_supported_openai_params(model=lm.model, custom_llm_provider=provider):
-                outputs = lm(**inputs, **lm_kwargs, response_format={"type": "json_object"})
+            params = litellm.get_supported_openai_params(model=lm.model, custom_llm_provider=provider)
+            if params and "response_format" in params:
+                try:
+                    response_format = _get_structured_outputs_response_format(signature)
+                    outputs = lm(**inputs, **lm_kwargs, response_format=response_format)
+                except Exception:
+                    logger.debug(
+                        "Failed to obtain response using signature-based structured outputs"
+                        " response format: Falling back to default 'json_object' response format."
+                        " Exception: {e}"
+                    )
+                    outputs = lm(**inputs, **lm_kwargs, response_format={"type": "json_object"})
             else:
                 outputs = lm(**inputs, **lm_kwargs)
 
@@ -45,7 +58,7 @@ class JSONAdapter(Adapter):
         values = []
 
         for output in outputs:
-            value = self.parse(signature, output, _parse_values=_parse_values)
+            value = self.parse(signature, output)
             assert set(value.keys()) == set(
                 signature.output_fields.keys()
             ), f"Expected {signature.output_fields.keys()} but got {value.keys()}"
@@ -77,7 +90,7 @@ class JSONAdapter(Adapter):
 
         return messages
 
-    def parse(self, signature, completion, _parse_values=True):
+    def parse(self, signature, completion):
         fields = json_repair.loads(completion)
         fields = {k: v for k, v in fields.items() if k in signature.output_fields}
 
@@ -134,6 +147,7 @@ def _format_field_value(field_info: FieldInfo, value: Any) -> str:
     Args:
       field_info: Information about the field, including its DSPy field type and annotation.
       value: The value of the field.
+
     Returns:
       The formatted value of the field, represented as a string.
     """
@@ -175,15 +189,15 @@ def format_turn(signature: SignatureMeta, values: Dict[str, Any], role, incomple
     so that it can instruct an LLM to generate responses conforming to the specified DSPy signature.
 
     Args:
-      signature: The DSPy signature to which future LLM responses should conform.
-      values: A dictionary mapping field names (from the DSPy signature) to corresponding values
-              that should be included in the message.
-      role: The role of the message, which can be either "user" or "assistant".
-      incomplete: If True, indicates that output field values are present in the set of specified
-                  ``values``. If False, indicates that ``values`` only contains input field values.
+        signature: The DSPy signature to which future LLM responses should conform.
+        values: A dictionary mapping field names (from the DSPy signature) to corresponding values
+            that should be included in the message.
+        role: The role of the message, which can be either "user" or "assistant".
+        incomplete: If True, indicates that output field values are present in the set of specified
+            ``values``. If False, indicates that ``values`` only contains input field values.
     Returns:
-      A chat message that can be appended to a chat thread. The message contains two string fields:
-      ``role`` ("user" or "assistant") and ``content`` (the message text).
+        A chat message that can be appended to a chat thread. The message contains two string fields:
+        ``role`` ("user" or "assistant") and ``content`` (the message text).
     """
     content = []
 
@@ -227,19 +241,6 @@ def format_turn(signature: SignatureMeta, values: Dict[str, Any], role, incomple
         )
 
     return {"role": role, "content": "\n\n".join(content).strip()}
-
-
-def get_annotation_name(annotation):
-    origin = get_origin(annotation)
-    args = get_args(annotation)
-    if origin is None:
-        if hasattr(annotation, "__name__"):
-            return annotation.__name__
-        else:
-            return str(annotation)
-    else:
-        args_str = ", ".join(get_annotation_name(arg) for arg in args)
-        return f"{get_annotation_name(origin)}[{args_str}]"
 
 
 def enumerate_fields(fields):
@@ -303,3 +304,50 @@ def prepare_instructions(signature: SignatureMeta):
     #              ", and then ending with the marker for `completed`.")
 
     return "\n\n".join(parts).strip()
+
+
+def _get_structured_outputs_response_format(signature: SignatureMeta) -> pydantic.BaseModel:
+    """
+    Obtains the LiteLLM / OpenAI `response_format` parameter for generating structured outputs from
+    an LM request, based on the output fields of the specified DSPy signature.
+
+    Args:
+        signature: The DSPy signature for which to obtain the `response_format` request parameter.
+    Returns:
+        A Pydantic model representing the `response_format` parameter for the LM request.
+    """
+
+    def filter_json_schema_extra(field_name: str, field_info: FieldInfo) -> FieldInfo:
+        """
+        Recursively filter the `json_schema_extra` of a FieldInfo to exclude DSPy internal attributes
+        (e.g. `__dspy_field_type`) and remove descriptions that are placeholders for the field name.
+        """
+        field_copy = deepcopy(field_info)  # Make a copy to avoid mutating the original
+
+        # Update `json_schema_extra` for the copied field
+        if field_copy.json_schema_extra:
+            field_copy.json_schema_extra = {
+                key: value
+                for key, value in field_info.json_schema_extra.items()
+                if key not in ("desc", "__dspy_field_type")
+            }
+            field_desc = field_info.json_schema_extra.get("desc")
+            if field_desc is not None and field_desc != f"${{{field_name}}}":
+                field_copy.json_schema_extra["desc"] = field_desc
+
+        # Handle nested fields
+        if hasattr(field_copy.annotation, "__pydantic_model__"):
+            # Recursively update fields of the nested model
+            nested_model = field_copy.annotation.__pydantic_model__
+            updated_fields = {
+                key: filter_json_schema_extra(key, value) for key, value in nested_model.__fields__.items()
+            }
+            # Create a new model with the same name and updated fields
+            field_copy.annotation = create_model(nested_model.__name__, **updated_fields)
+
+        return field_copy
+
+    output_pydantic_fields = {
+        key: (value.annotation, filter_json_schema_extra(key, value)) for key, value in signature.output_fields.items()
+    }
+    return create_model("DSPyProgramOutputs", **output_pydantic_fields)
